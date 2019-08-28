@@ -4,6 +4,8 @@ import os
 import sys
 import signal
 import picamera
+import subprocess
+import traceback
 from time import sleep
 from gpiozero import RGBLED
 from gpiozero import DistanceSensor
@@ -26,21 +28,31 @@ class CameraThread(threading.Thread):
         super().__init__()
         self.isAlive = True
         
+        
     def run(self):
         with picamera.PiCamera(resolution=(480,360), framerate=24) as camera:
             while self.isAlive:
                 try:
-                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    with self.socket as s:
                         s.bind(('', PORT_CAMERA))
                         print('Listening for Camera...')
                         s.listen()
                         connection, addr = s.accept()
                         with connection.makefile('wb') as output:
                             print('Connected for camera by', addr)
-                            camera.start_recording(output, format='h264', profile='main')
+                            ffmpeg = subprocess.Popen([ 'ffmpeg', '-i', '-',
+                                                        '-vcodec', 'copy'
+                                                        '-input_format', 'h264',
+                                                        '-',
+                                                        ], stdin=subprocess.PIPE, stdout=output)
+                            camera.start_recording(ffmpeg.stdin, format='h264', profile='main')
                             while self.isAlive:
                                 camera.wait_recording(0.1)
                             
+                except OSError as error:
+                    traceback.print_exc(error)
+                    
                 except:
                     print("Unexpected camera error type: ", sys.exc_info()[0])
                     print("Unexpected camera error value: ", sys.exc_info()[1])
@@ -50,10 +62,14 @@ class CameraThread(threading.Thread):
                 except:
                     print("Exception when stopping recording: ", sys.exc_info()[1])
                 sleep(1)
+                
         
     def stop(self):
         self.isAlive = False
-            
+        try:
+            self.socket.shutdown(socket.SHUT_RDWR)
+        except:
+            pass
 
 
 def stop():
@@ -161,8 +177,10 @@ with RGBLED(22, 27, 10, False) as led,\
         
     cameraSystem.stop()
     cameraSystem.join()
+    print("Camera system stopped!")
     distanceSystem.stop()
     distanceSystem.join()
+    print("Distance system stopped!")
     stop()
     led.off()
 print('Done')
