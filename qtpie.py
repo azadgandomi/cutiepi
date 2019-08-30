@@ -4,7 +4,6 @@ import os
 import sys
 import signal
 import picamera
-import subprocess
 import traceback
 from time import sleep
 from gpiozero import RGBLED
@@ -41,12 +40,7 @@ class CameraThread(threading.Thread):
                         connection, addr = s.accept()
                         with connection.makefile('wb') as output:
                             print('Connected for camera by', addr)
-                            ffmpeg = subprocess.Popen([ 'ffmpeg', '-i', '-',
-                                                        '-vcodec', 'copy'
-                                                        '-input_format', 'h264',
-                                                        '-',
-                                                        ], stdin=subprocess.PIPE, stdout=output)
-                            camera.start_recording(ffmpeg.stdin, format='h264', profile='main')
+                            camera.start_recording(output, format='mjpeg')
                             while self.isAlive:
                                 camera.wait_recording(0.1)
                             
