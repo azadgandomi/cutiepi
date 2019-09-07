@@ -29,7 +29,7 @@ class CameraThread(threading.Thread):
         
         
     def run(self):
-        with picamera.PiCamera(resolution=(900,300), framerate=24) as camera:
+        with picamera.PiCamera(resolution=(900,400), framerate=24) as camera:
             while self.isAlive:
                 try:
                     self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
