@@ -4,13 +4,13 @@ import os
 import sys
 import signal
 import picamera
-import traceback
 from time import sleep
 from gpiozero import RGBLED
 from gpiozero import DistanceSensor
 from gpiozero import Motor
 
 signal.signal(signal.SIGINT, signal.default_int_handler)
+signal.signal(signal.SIGTERM, signal.default_int_handler)
 
 os.chdir(os.path.dirname(__file__))
 
@@ -29,7 +29,7 @@ class CameraThread(threading.Thread):
         
         
     def run(self):
-        with picamera.PiCamera(resolution=(480,360), framerate=24) as camera:
+        with picamera.PiCamera(resolution=(900,300), framerate=24) as camera:
             while self.isAlive:
                 try:
                     self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -42,10 +42,7 @@ class CameraThread(threading.Thread):
                             print('Connected for camera by', addr)
                             camera.start_recording(output, format='mjpeg')
                             while self.isAlive:
-                                camera.wait_recording(0.1)
-                            
-                except OSError as error:
-                    traceback.print_exc(error)
+                                camera.wait_recording(0.1)                            
                     
                 except:
                     print("Unexpected camera error type: ", sys.exc_info()[0])
@@ -113,7 +110,7 @@ class DistanceThread(threading.Thread):
                     self.isObstacleClose = False
                     led.color = self.color
                     
-                sleep(0.05)
+                sleep(0.02)
                 
     def stop(self):
         self.isAlive = False
@@ -165,8 +162,9 @@ with RGBLED(22, 27, 10, False) as led,\
                         else:
                             commands[data]()
         except:
-            print("Unexpected unkown error: ", sys.exc_info()[0])
+            print("Unexpected unkown error: ", sys.exc_info()[1])
             isOn = False
+        stop()
         sleep(1)
         
     cameraSystem.stop()
