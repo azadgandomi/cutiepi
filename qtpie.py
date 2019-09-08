@@ -34,6 +34,7 @@ class CameraThread(threading.Thread):
                 try:
                     self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     with self.socket as s:
+                        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                         s.bind(('', PORT_CAMERA))
                         print('Listening for Camera...')
                         s.listen()
@@ -125,7 +126,7 @@ with RGBLED(22, 27, 10, False) as led,\
     cameraSystem = CameraThread()
     cameraSystem.start()
     
-    commands = {b'S' : stop,
+    commands = {b'ST' : stop,
                 b'GF' : goForward,
                 b'GB' : goBackward,
                 b'TR' : turnRight,
@@ -136,6 +137,7 @@ with RGBLED(22, 27, 10, False) as led,\
     while isOn:
         try:    
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 s.bind(('', PORT_CONTROL))
                 print('Listening for control...')
                 distanceSystem.color = blue
@@ -145,22 +147,23 @@ with RGBLED(22, 27, 10, False) as led,\
                 with conn:
                     print('Connected for control by', addr)
                     while True:
-                        data = conn.recv(1024)
+                        data = conn.recv(2)
                         print(data)
                         if (not data):
                             print("socket closed!")
                             break
-                        elif data == b'shutdown':
+                        elif data == b'SD':
                             isOn = False
                             break
                         elif distanceSystem.isObstacleClose:
                             if data == b'GB':
                                 goBackward()
-                            elif data == b'S':
+                            elif data == b'ST':
                                 stop()
                             continue
                         else:
-                            commands[data]()
+                            if data in commands:
+                                commands[data]()
         except:
             print("Unexpected unkown error: ", sys.exc_info()[1])
             isOn = False
