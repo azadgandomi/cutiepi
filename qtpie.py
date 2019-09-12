@@ -16,7 +16,8 @@ os.chdir(os.path.dirname(__file__))
 
 PORT_CAMERA = 45678
 PORT_CONTROL = 56789
-SPEED = 0.5
+
+DEFAULT_POWER = 0.5
 
 blue = (0, 0, 1)
 green = (0, 1, 0)
@@ -69,28 +70,28 @@ def stop():
     motorR.stop()
     
 def goForward():
-    motorL.forward(SPEED)
-    motorR.forward(SPEED)
+    motorL.forward(power)
+    motorR.forward(power)
         
 def goBackward():
-    motorL.backward(SPEED)
-    motorR.backward(SPEED)
+    motorL.backward(power)
+    motorR.backward(power)
     
 def turnRight():
     motorR.stop()
-    motorL.forward(SPEED)
+    motorL.forward(power)
     
 def turnLeft():
     motorL.stop()
-    motorR.forward(SPEED)
+    motorR.forward(power)
     
 def rotateClockwise():
-    motorL.forward(SPEED)
-    motorR.backward(SPEED)
+    motorL.forward(power)
+    motorR.backward(power)
 
 def rotateAntiClockwise():
-    motorL.backward(SPEED)
-    motorR.forward(SPEED)
+    motorL.backward(power)
+    motorR.forward(power)
 
 class DistanceThread(threading.Thread):
     def __init__(self):
@@ -126,13 +127,15 @@ with RGBLED(22, 27, 10, False) as led,\
     cameraSystem = CameraThread()
     cameraSystem.start()
     
-    commands = {b'ST' : stop,
+    restrictedCommands = {b'ST' : stop,
+                          b'GB' : goBackward,
+                          b'RC' : rotateClockwise,
+                          b'RA' : rotateAntiClockwise}
+    
+    commands = {**restrictedCommands,
                 b'GF' : goForward,
-                b'GB' : goBackward,
                 b'TR' : turnRight,
-                b'TL' : turnLeft,
-                b'RC' : rotateClockwise,
-                b'RA' : rotateAntiClockwise}
+                b'TL' : turnLeft}
          
     while isOn:
         try:    
@@ -146,6 +149,8 @@ with RGBLED(22, 27, 10, False) as led,\
                 distanceSystem.color = green
                 with conn:
                     print('Connected for control by', addr)
+                    power = DEFAULT_POWER
+                    conn.send(bytes([int(power*100)]))
                     while True:
                         data = conn.recv(2)
                         print(data)
@@ -155,15 +160,20 @@ with RGBLED(22, 27, 10, False) as led,\
                         elif data == b'SD':
                             isOn = False
                             break
-                        elif distanceSystem.isObstacleClose:
-                            if data == b'GB':
-                                goBackward()
-                            elif data == b'ST':
-                                stop()
-                            continue
+                        elif data[0] == b'P':
+                            newPower = data[1]/100
+                            if 0 <= newPower <= 1:
+                                print("Setting power to {}".format(newPower))
+                                power = newPower
+                            else:
+                                print("Invalid power value, resetting power to default")
+                                power = DEFAULT_POWER
                         else:
-                            if data in commands:
+                            if data in (restrictedCommands if distanceSystem.isObstacleClose else commands):
                                 commands[data]()
+                            else:
+                                print("Illegal Command Received!, Stopping motors!")
+                                stop()
         except:
             print("Unexpected unkown error: ", sys.exc_info()[1])
             isOn = False
