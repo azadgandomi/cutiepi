@@ -160,7 +160,7 @@ with RGBLED(22, 27, 10, False) as led,\
                         elif data == b'SD':
                             isOn = False
                             break
-                        elif data[0] == b'P':
+                        elif data[0:1] == b'P':
                             newPower = data[1]/100
                             if 0 <= newPower <= 1:
                                 print("Setting power to {}".format(newPower))
