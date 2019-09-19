@@ -19,13 +19,16 @@ PORT_CONTROL = 56789
 
 DEFAULT_POWER = 0.5
 
-blue = (0, 0, 1)
-green = (0, 1, 0)
-red = (1, 0, 0)
+LED_BLUE = (0, 0, 1)
+LED_GREEN = (0, 1, 0)
+LED_RED = (1, 0, 0)
+
+
 
 class CameraThread(threading.Thread):
-    def __init__(self):
+    def __init__(self, ready):
         super().__init__()
+        self.ready = ready
         self.isAlive = True
         
         
@@ -39,6 +42,7 @@ class CameraThread(threading.Thread):
                         s.bind(('', PORT_CAMERA))
                         print('Listening for Camera...')
                         s.listen()
+                        self.ready.set()
                         connection, addr = s.accept()
                         with connection.makefile('wb') as output:
                             print('Connected for camera by', addr)
@@ -47,14 +51,13 @@ class CameraThread(threading.Thread):
                                 camera.wait_recording(0.1)                            
                     
                 except:
-                    print("Unexpected camera error type: ", sys.exc_info()[0])
-                    print("Unexpected camera error value: ", sys.exc_info()[1])
+                    print("camera error type: ", sys.exc_info()[0])
+                    print("camera error value: ", sys.exc_info()[1])
                     
                 try:
                     camera.stop_recording()
                 except:
-                    print("Exception when stopping recording: ", sys.exc_info()[1])
-                sleep(1)
+                    pass
                 
         
     def stop(self):
@@ -78,8 +81,8 @@ def goBackward():
     motorR.backward(power)
     
 def turnRight():
-    motorR.stop()
     motorL.forward(power)
+    motorR.stop()
     
 def turnLeft():
     motorL.stop()
@@ -98,7 +101,6 @@ class DistanceThread(threading.Thread):
         super().__init__()
         self.isObstacleClose = False
         self.isAlive = True
-        self.color = (0, 0, 0)
         
     def run(self):
         with DistanceSensor(26,19, max_distance=4.5) as sensor:
@@ -107,12 +109,10 @@ class DistanceThread(threading.Thread):
                     if not self.isObstacleClose:
                         stop()
                         self.isObstacleClose = True
-                        led.color = red
+                        led.color = LED_RED
                 else:
                     self.isObstacleClose = False
-                    led.color = self.color
-                    
-                sleep(0.02)
+                    led.color = LED_GREEN
                 
     def stop(self):
         self.isAlive = False
@@ -122,10 +122,6 @@ isOn = True
 with RGBLED(22, 27, 10, False) as led,\
      Motor(forward=2, backward=3) as motorL,\
      Motor(forward=4, backward=17) as motorR:
-    distanceSystem = DistanceThread()
-    distanceSystem.start()
-    cameraSystem = CameraThread()
-    cameraSystem.start()
     
     restrictedCommands = {b'ST' : stop,
                           b'GB' : goBackward,
@@ -142,13 +138,18 @@ with RGBLED(22, 27, 10, False) as led,\
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 s.bind(('', PORT_CONTROL))
-                print('Listening for control...')
-                distanceSystem.color = blue
+                print('Listening for controller...')
+                led.color = LED_BLUE
                 s.listen()
                 conn, addr = s.accept()
-                distanceSystem.color = green
                 with conn:
                     print('Connected for control by', addr)
+                    distanceSystem = DistanceThread()
+                    distanceSystem.start()
+                    cameraThreadReady = threading.Event()
+                    cameraSystem = CameraThread(cameraThreadReady)
+                    cameraSystem.start()
+                    cameraThreadReady.wait()
                     power = DEFAULT_POWER
                     conn.send(bytes([int(power*100)]))
                     while True:
@@ -175,17 +176,21 @@ with RGBLED(22, 27, 10, False) as led,\
                                 print("Illegal Command Received!, Stopping motors!")
                                 stop()
         except:
-            print("Unexpected unkown error: ", sys.exc_info()[1])
+            if sys.exc_info()[0] is not KeyboardInterrupt:
+                print("Unexpected error: ", sys.exc_info()[0])
             isOn = False
+        
+        led.off()
         stop()
+        try:
+            cameraSystem.stop()
+            cameraSystem.join()
+            print("Camera system stopped!")
+            distanceSystem.stop()
+            distanceSystem.join()
+            print("Distance system stopped!")
+        except:
+            pass
         sleep(1)
         
-    cameraSystem.stop()
-    cameraSystem.join()
-    print("Camera system stopped!")
-    distanceSystem.stop()
-    distanceSystem.join()
-    print("Distance system stopped!")
-    stop()
-    led.off()
-print('Done')
+print('Shutting down!')
