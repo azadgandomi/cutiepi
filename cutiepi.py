@@ -96,43 +96,38 @@ def rotateAntiClockwise():
     motorL.backward(power)
     motorR.forward(power)
 
-class DistanceThread(threading.Thread):
-    def __init__(self):
-        super().__init__()
-        self.isObstacleClose = False
-        self.isAlive = True
-        
-    def run(self):
-        with DistanceSensor(26,19, max_distance=4.5) as sensor:
-            while self.isAlive:
-                if(sensor.distance < 0.25):
-                    if not self.isObstacleClose:
-                        stop()
-                        self.isObstacleClose = True
-                        led.color = LED_RED
-                else:
-                    self.isObstacleClose = False
-                    led.color = LED_GREEN
-                
-    def stop(self):
-        self.isAlive = False
+
+isObstacleClose = False
+
+def obstacleInRange():
+    global isObstacleClose
+    isObstacleClose = True
+    stop()
+    led.color = LED_RED
+
+def obstacleOutOfRange():
+    global isObstacleClose
+    isObstacleClose = False
+    led.color = LED_GREEN
+
         
             
 isOn = True
 with RGBLED(22, 27, 10, False) as led,\
      Motor(forward=2, backward=3) as motorL,\
-     Motor(forward=4, backward=17) as motorR:
-    
+     Motor(forward=4, backward=17) as motorR,\
+     DistanceSensor(26,19, threshold_distance=0.2, max_distance=4.5) as sensor:
+
     restrictedCommands = {b'ST' : stop,
                           b'GB' : goBackward,
                           b'RC' : rotateClockwise,
                           b'RA' : rotateAntiClockwise}
-    
+
     commands = {**restrictedCommands,
                 b'GF' : goForward,
                 b'TR' : turnRight,
                 b'TL' : turnLeft}
-         
+
     while isOn:
         try:    
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -144,8 +139,9 @@ with RGBLED(22, 27, 10, False) as led,\
                 conn, addr = s.accept()
                 with conn:
                     print('Connected for control by', addr)
-                    distanceSystem = DistanceThread()
-                    distanceSystem.start()
+                    led.color = LED_GREEN
+                    sensor.when_in_range = obstacleInRange
+                    sensor.when_out_of_range = obstacleOutOfRange
                     cameraThreadReady = threading.Event()
                     cameraSystem = CameraThread(cameraThreadReady)
                     cameraSystem.start()
@@ -170,7 +166,7 @@ with RGBLED(22, 27, 10, False) as led,\
                                 print("Invalid power value, resetting power to default")
                                 power = DEFAULT_POWER
                         else:
-                            if data in (restrictedCommands if distanceSystem.isObstacleClose else commands):
+                            if data in (restrictedCommands if isObstacleClose else commands):
                                 commands[data]()
                             else:
                                 print("Illegal Command Received!, Stopping motors!")
@@ -180,17 +176,16 @@ with RGBLED(22, 27, 10, False) as led,\
                 print("Unexpected error: ", sys.exc_info()[0])
             isOn = False
         
-        led.off()
         stop()
         try:
             cameraSystem.stop()
             cameraSystem.join()
             print("Camera system stopped!")
-            distanceSystem.stop()
-            distanceSystem.join()
-            print("Distance system stopped!")
+            sensor.when_in_range = None
+            sensor.when_out_of_range = None
         except:
             pass
+        led.off()
         sleep(1)
         
 print('Shutting down!')
