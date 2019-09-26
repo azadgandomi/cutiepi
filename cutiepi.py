@@ -7,6 +7,7 @@ import picamera
 from time import sleep
 from gpiozero import RGBLED
 from gpiozero import DistanceSensor
+from gpiozero import DigitalOutputDevice
 from gpiozero import Motor
 
 signal.signal(signal.SIGINT, signal.default_int_handler)
@@ -113,10 +114,12 @@ def obstacleOutOfRange():
         
             
 isOn = True
+
 with RGBLED(22, 27, 10, False) as led,\
+     DigitalOutputDevice(pin=14, initial_value=True),\
      Motor(forward=2, backward=3) as motorL,\
      Motor(forward=4, backward=17) as motorR,\
-     DistanceSensor(26,19, threshold_distance=0.2, max_distance=4.5) as sensor:
+     DistanceSensor(26,19, threshold_distance=0.2, max_distance=4.5) as distanceSensor:
 
     restrictedCommands = {b'ST' : stop,
                           b'GB' : goBackward,
@@ -140,8 +143,8 @@ with RGBLED(22, 27, 10, False) as led,\
                 with conn:
                     print('Connected for control by', addr)
                     led.color = LED_GREEN
-                    sensor.when_in_range = obstacleInRange
-                    sensor.when_out_of_range = obstacleOutOfRange
+                    distanceSensor.when_in_range = obstacleInRange
+                    distanceSensor.when_out_of_range = obstacleOutOfRange
                     cameraThreadReady = threading.Event()
                     cameraSystem = CameraThread(cameraThreadReady)
                     cameraSystem.start()
@@ -181,8 +184,8 @@ with RGBLED(22, 27, 10, False) as led,\
             cameraSystem.stop()
             cameraSystem.join()
             print("Camera system stopped!")
-            sensor.when_in_range = None
-            sensor.when_out_of_range = None
+            distanceSensor.when_in_range = None
+            distanceSensor.when_out_of_range = None
         except:
             pass
         led.off()
